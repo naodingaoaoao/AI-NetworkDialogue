@@ -32,8 +32,8 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-repo/DaYiJieNanAi.git
-cd DaYiJieNanAi
+git clone https://github.com/naodingaoaoao/AI-NetworkDialogue.git
+cd YourProgram
 
 # 安装依赖
 pip install -r requirements.txt
