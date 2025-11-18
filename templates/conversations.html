@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+
+{% block title %}对话历史 - AI对话系统{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="glass-card p-6 mb-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <h1 class="text-2xl font-bold text-white">对话历史</h1>
+            <div class="flex space-x-4">
+                <button id="cleanup-btn" class="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                    <i class="fas fa-broom mr-2"></i>清理旧对话
+                </button>
+                <a href="/new-chat" class="btn-primary">
+                    <i class="fas fa-plus mr-2"></i>新建对话
+                </a>
+            </div>
+        </div>
+        
+        <div class="mb-6">
+            <div class="relative">
+                <input 
+                    type="text" 
+                    id="search-input" 
+                    class="w-full bg-gray-800 text-white rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="搜索对话标题或内容...">
+                <i class="fas fa-search absolute left-3 top-4 text-gray-400"></i>
+            </div>
+        </div>
+        
+        <div id="conversations-container">
+            {% if conversations %}
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {% for conv in conversations %}
+                    <div class="conversation-card glass-card p-6" data-conversation-id="{{ conv.id }}">
+                        <h3 class="text-lg font-semibold text-white mb-2 truncate">{{ conv.title }}</h3>
+                        
+                        <div class="text-sm text-gray-400 mb-4 space-y-1">
+                            <div class="flex justify-between">
+                                <span>创建:</span>
+                                <span>{{ format_time(conv.created_at) }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>更新:</span>
+                                <span>{{ format_time(conv.updated_at) }}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center mt-4">
+                            <button class="text-blue-400 hover:text-blue-300 open-conversation" data-conversation-id="{{ conv.id }}">
+                                <i class="fas fa-comments mr-2"></i>打开
+                            </button>
+                            <div class="flex space-x-2">
+                                <button class="text-gray-400 hover:text-white rename-conversation" data-conversation-id="{{ conv.id }}" data-title="{{ conv.title }}">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="text-gray-400 hover:text-white export-conversation" data-conversation-id="{{ conv.id }}">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button class="text-gray-400 hover:text-red-400 delete-conversation" data-conversation-id="{{ conv.id }}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+            <div class="text-center py-12">
+                <i class="fas fa-comments text-6xl text-gray-600 mb-4"></i>
+                <h3 class="text-xl font-medium text-white mb-2">暂无对话记录</h3>
+                <p class="text-gray-400 mb-6">开始你的第一次对话</p>
+                <a href="/new-chat" class="btn-primary">
+                    <i class="fas fa-plus mr-2"></i>创建对话
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="flex justify-center mt-6" id="pagination">
+        </div>
+    </div>
+    
+    <div class="glass-card p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">对话统计信息</h2>
+        <div id="statistics-container">
+            <div class="text-center py-4">
+                <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                <p class="text-gray-400 mt-2">加载中...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="rename-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="glass-card p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold text-white">重命名对话</h2>
+            <button id="close-rename-modal" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <form id="rename-form">
+            <div class="mb-4">
+                <label for="new-title" class="block text-white mb-2">新标题</label>
+                <input 
+                    type="text" 
+                    id="new-title" 
+                    class="w-full bg-gray-800 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required>
+            </div>
+            
+            <div class="flex justify-end space-x-4">
+                <button type="button" id="cancel-rename" class="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600">
+                    取消
+                </button>
+                <button type="submit" class="btn-primary px-6 py-2">
+                    <i class="fas fa-save mr-2"></i>保存
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<div id="cleanup-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="glass-card p-6 w-full max-w-md">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold text-white">清理旧对话</h2>
+            <button id="close-cleanup-modal" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <form id="cleanup-form">
+            <div class="mb-4">
+                <label for="cleanup-days" class="block text-white mb-2">保留天数</label>
+                <input 
+                    type="number" 
+                    id="cleanup-days" 
+                    class="w-full bg-gray-800 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value="30" 
+                    min="1" 
+                    required>
+                <div class="text-xs text-gray-400 mt-1">
+                    将删除超过指定天数的对话，此操作不可恢复
+                </div>
+            </div>
+            
+            <div class="flex justify-end space-x-4">
+                <button type="button" id="cancel-cleanup" class="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600">
+                    取消
+                </button>
+                <button type="submit" class="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                    <i class="fas fa-broom mr-2"></i>清理
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let currentPage = 1;
+    const itemsPerPage = 12;
+    let totalConversations = {{ conversations|length }};
+    let currentConversationId = null;
+    let searchQuery = '';
+    
+    // 搜索框
+    function showRenameModal(conversationId, currentTitle) {
+        currentConversationId = conversationId;
+        document.getElementById('new-title').value = currentTitle;
+        document.getElementById('rename-modal').classList.remove('hidden');
+    }
+    
+    function hideRenameModal() {
+        document.getElementById('rename-modal').classList.add('hidden');
+        currentConversationId = null;
+    }
+    
+    function showCleanupModal() {
+        document.getElementById('cleanup-modal').classList.remove('hidden');
+    }
+    
+    function hideCleanupModal() {
+        document.getElementById('cleanup-modal').classList.add('hidden');
+    }
+    
+    async function renameConversation(newTitle) {
+        if (!currentConversationId || !newTitle.trim()) {
+            return;
+        }
+        
+        try {
+            await apiRequest(`/conversations/${currentConversationId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    title: newTitle
+                })
+            });
+            
+            showNotification('对话重命名成功', 'success');
+            
+            const card = document.querySelector(`[data-conversation-id="${currentConversationId}"]`);
+            if (card) {
+                const titleElement = card.querySelector('h3');
+                if (titleElement) {
+                    titleElement.textContent = newTitle;
+                }
+                
+                const renameBtn = card.querySelector('.rename-conversation');
+                if (renameBtn) {
+                    renameBtn.setAttribute('data-title', newTitle);
+                }
+            }
+            
+            hideRenameModal();
+        } catch (error) {
+            console.error('重命名对话失败:', error);
+            showNotification('重命名失败: ' + error.message, 'error');
+        }
+    }
+    
+    function exportConversation(conversationId) {
+        window.open(`/api/conversations/${conversationId}/export`, '_blank');
+    }
+    
+    async function deleteConversation(conversationId) {
+        if (!confirm('确定要删除这个对话吗？此操作不可恢复。')) {
+            return;
+        }
+        
+        try {
+            await apiRequest(`/conversations/${conversationId}`, {
+                method: 'DELETE'
+            });
+            
+            showNotification('对话删除成功', 'success');
+            
+            // 从页面移除对话卡片
+            const card = document.querySelector(`[data-conversation-id="${conversationId}"]`);
+            if (card) {
+                card.style.opacity = '0';
+                card.style.transform = 'scale(0.9)';
+                
+                setTimeout(() => {
+                    card.remove();
+
+                    const remainingCards = document.querySelectorAll('.conversation-card');
+                    if (remainingCards.length === 0) {
+                        document.getElementById('conversations-container').innerHTML = `
+                            <div class="text-center py-12">
+                                <i class="fas fa-comments text-6xl text-gray-600 mb-4"></i>
+                                <h3 class="text-xl font-medium text-white mb-2">暂无对话记录</h3>
+                                <p class="text-gray-400 mb-6">开始你的第一次对话</p>
+                                <a href="/new-chat" class="btn-primary">
+                                    <i class="fas fa-plus mr-2"></i>创建对话
+                                </a>
+                            </div>
+                        `;
+                    }
+                    
+                    // 更新统计信息
+                    loadStatistics();
+                }, 300);
+            }
+        } catch (error) {
+            console.error('删除对话失败:', error);
+            showNotification('删除失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 清理旧对话
+    async function cleanupOldConversations(days) {
+        try {
+            const response = await apiRequest('/conversations/cleanup', {
+                method: 'POST',
+                body: JSON.stringify({ days: parseInt(days) })
+            });
+            
+            showNotification(response.message, 'success');
+            hideCleanupModal();
+                        setTimeout(() => {
+                location.reload();
+            }, 1000);
+        } catch (error) {
+            console.error('清理对话失败:', error);
+            showNotification('清理失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 加载对话列表
+    async function loadConversations(page = 1, query = '') {
+        try {
+            let url = `/conversations?limit=${itemsPerPage}&offset=${(page - 1) * itemsPerPage}`;
+            if (query) {
+                // 在前端实现搜索，因为API不支持搜索功能
+
+            }
+            
+            const response = await apiRequest(url);
+            
+            if (response.conversations) {
+                totalConversations = response.total;
+                renderConversations(response.conversations);
+                updatePagination(page);
+            }
+        } catch (error) {
+            console.error('加载对话列表失败:', error);
+            showNotification('加载对话列表失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 渲染对话列表
+    function renderConversations(conversations) {
+        const container = document.getElementById('conversations-container');
+        
+        if (conversations.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-12">
+                    <i class="fas fa-comments text-6xl text-gray-600 mb-4"></i>
+                    <h3 class="text-xl font-medium text-white mb-2">暂无对话记录</h3>
+                    <p class="text-gray-400 mb-6">开始你的第一次对话</p>
+                    <a href="/new-chat" class="btn-primary">
+                        <i class="fas fa-plus mr-2"></i>创建对话
+                    </a>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                ${conversations.map(conv => `
+                    <div class="conversation-card glass-card p-6" data-conversation-id="${conv.id}">
+                        <h3 class="text-lg font-semibold text-white mb-2 truncate">${conv.title}</h3>
+                        
+                        <div class="text-sm text-gray-400 mb-4 space-y-1">
+                            <div class="flex justify-between">
+                                <span>创建:</span>
+                                <span>${formatTime(conv.created_at)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>更新:</span>
+                                <span>${formatTime(conv.updated_at)}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-between items-center mt-4">
+                            <button class="text-blue-400 hover:text-blue-300 open-conversation" data-conversation-id="${conv.id}">
+                                <i class="fas fa-comments mr-2"></i>打开
+                            </button>
+                            <div class="flex space-x-2">
+                                <button class="text-gray-400 hover:text-white rename-conversation" data-conversation-id="${conv.id}" data-title="${conv.title}">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="text-gray-400 hover:text-white export-conversation" data-conversation-id="${conv.id}">
+                                    <i class="fas fa-download"></i>
+                                </button>
+                                <button class="text-gray-400 hover:text-red-400 delete-conversation" data-conversation-id="${conv.id}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+    
+    // 更新分页
+    function updatePagination(currentPage) {
+        const totalPages = Math.ceil(totalConversations / itemsPerPage);
+        const pagination = document.getElementById('pagination');
+        
+        if (totalPages <= 1) {
+            pagination.innerHTML = '';
+            return;
+        }
+        
+        let html = '<div class="flex space-x-2">';
+        
+        html += `
+            <button class="px-3 py-1 bg-gray-800 text-white rounded ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700'}" 
+                    ${currentPage === 1 ? 'disabled' : ''} 
+                    onclick="loadConversations(${currentPage - 1}, '${searchQuery}')">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+        `;
+        
+        const maxButtons = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+        
+        if (endPage - startPage < maxButtons - 1) {
+            startPage = Math.max(1, endPage - maxButtons + 1);
+        }
+        
+        if (startPage > 1) {
+            html += `<button class="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-700" onclick="loadConversations(1, '${searchQuery}')">1</button>`;
+            if (startPage > 2) {
+                html += `<span class="px-3 py-1 text-gray-400">...</span>`;
+            }
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            html += `
+                <button class="px-3 py-1 ${i === currentPage ? 'bg-blue-600 text-white' : 'bg-gray-800 text-white hover:bg-gray-700'} rounded" 
+                        onclick="loadConversations(${i}, '${searchQuery}')">${i}</button>
+            `;
+        }
+        
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                html += `<span class="px-3 py-1 text-gray-400">...</span>`;
+            }
+            html += `<button class="px-3 py-1 bg-gray-800 text-white rounded hover:bg-gray-700" onclick="loadConversations(${totalPages}, '${searchQuery}')">${totalPages}</button>`;
+        }
+        
+        html += `
+            <button class="px-3 py-1 bg-gray-800 text-white rounded ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-700'}" 
+                    ${currentPage === totalPages ? 'disabled' : ''} 
+                    onclick="loadConversations(${currentPage + 1}, '${searchQuery}')">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+        `;
+        
+        html += '</div>';
+        pagination.innerHTML = html;
+    }
+    
+    // 统计信息
+    async function loadStatistics() {
+        try {
+            const stats = await apiRequest('/conversations/statistics');
+            
+            const container = document.getElementById('statistics-container');
+            
+            if (Object.keys(stats).length > 0) {
+                container.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-gray-800 bg-opacity-50 p-4 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-blue-400">${stats.total_conversations || 0}</div>
+                            <div class="text-sm text-gray-400">总对话数</div>
+                        </div>
+                        <div class="bg-gray-800 bg-opacity-50 p-4 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-green-400">${stats.total_messages || 0}</div>
+                            <div class="text-sm text-gray-400">总消息数</div>
+                        </div>
+                        <div class="bg-gray-800 bg-opacity-50 p-4 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-purple-400">${stats.recent_conversations_7_days || 0}</div>
+                            <div class="text-sm text-gray-400">近7天对话</div>
+                        </div>
+                        <div class="bg-gray-800 bg-opacity-50 p-4 rounded-lg text-center">
+                            <div class="text-2xl font-bold text-orange-400">${stats.max_age_days || 30}</div>
+                            <div class="text-sm text-gray-400">保留天数</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="fas fa-chart-bar text-4xl text-gray-600 mb-3"></i>
+                        <p class="text-gray-400">暂无统计数据</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('加载统计信息失败:', error);
+            document.getElementById('statistics-container').innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-exclamation-circle text-4xl text-red-500 mb-3"></i>
+                    <p class="text-gray-400">加载统计信息失败</p>
+                </div>
+            `;
+        }
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('close-rename-modal').addEventListener('click', hideRenameModal);
+        document.getElementById('cancel-rename').addEventListener('click', hideRenameModal);
+        document.getElementById('rename-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newTitle = document.getElementById('new-title').value;
+            renameConversation(newTitle);
+        });
+        
+        document.getElementById('cleanup-btn').addEventListener('click', showCleanupModal);
+        document.getElementById('close-cleanup-modal').addEventListener('click', hideCleanupModal);
+        document.getElementById('cancel-cleanup').addEventListener('click', hideCleanupModal);
+        document.getElementById('cleanup-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const days = document.getElementById('cleanup-days').value;
+            cleanupOldConversations(days);
+        });
+        
+        document.getElementById('conversations-container').addEventListener('click', (e) => {
+            const openBtn = e.target.closest('.open-conversation');
+            if (openBtn) {
+                const conversationId = openBtn.getAttribute('data-conversation-id');
+                window.location.href = `/chat/${conversationId}`;
+                return;
+            }
+            
+            const renameBtn = e.target.closest('.rename-conversation');
+            if (renameBtn) {
+                const conversationId = renameBtn.getAttribute('data-conversation-id');
+                const currentTitle = renameBtn.getAttribute('data-title');
+                showRenameModal(conversationId, currentTitle);
+                return;
+            }
+            
+            const exportBtn = e.target.closest('.export-conversation');
+            if (exportBtn) {
+                const conversationId = exportBtn.getAttribute('data-conversation-id');
+                exportConversation(conversationId);
+                return;
+            }
+            
+            const deleteBtn = e.target.closest('.delete-conversation');
+            if (deleteBtn) {
+                const conversationId = deleteBtn.getAttribute('data-conversation-id');
+                deleteConversation(conversationId);
+                return;
+            }
+        });
+        
+        const searchInput = document.getElementById('search-input');
+        let searchTimeout;
+        
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchQuery = e.target.value;
+            
+            // 延迟搜索
+            searchTimeout = setTimeout(() => {
+                currentPage = 1;
+                loadConversations(currentPage, searchQuery);
+            }, 500);
+        });
+        
+        document.getElementById('rename-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                hideRenameModal();
+            }
+        });
+        
+        document.getElementById('cleanup-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                hideCleanupModal();
+            }
+        });
+        
+        loadStatistics();
+    });
+</script>
+{% endblock %}

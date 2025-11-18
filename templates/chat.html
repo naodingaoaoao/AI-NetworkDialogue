@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}{{ conversation_title }} - AI对话{% endblock %}
+
+{% block content %}
+<div class="h-full flex flex-col">
+    <div class="glass-card p-4 mb-4 flex items-center justify-between">
+        <div class="flex items-center">
+            <a href="/" class="text-white mr-4 hover:text-blue-400">
+                <i class="fas fa-arrow-left"></i>
+            </a>
+            <h1 class="text-xl font-semibold text-white">{{ conversation_title }}</h1>
+        </div>
+        <div class="flex items-center space-x-4">
+            <!-- 预设选择器 -->
+            <div class="relative">
+                <select id="preset-selector" class="bg-gray-800 text-white rounded-lg p-2 pr-8 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">无预设</option>
+                    {% for preset in presets %}
+                    <option value="{{ preset.id }}" {% if current_preset and current_preset.id == preset.id %}selected{% endif %}>
+                        {{ preset.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <i class="fas fa-chevron-down absolute right-2 top-3 text-gray-400 pointer-events-none"></i>
+            </div>
+            
+            <!-- 操作按钮 -->
+            <button id="rename-conversation" class="text-white hover:text-blue-400">
+                <i class="fas fa-edit"></i>
+            </button>
+            <button id="export-conversation" class="text-white hover:text-blue-400">
+                <i class="fas fa-download"></i>
+            </button>
+            <button id="delete-conversation" class="text-white hover:text-red-400">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    </div>
+    
+    <!-- 消息区域 -->
+    <div class="flex-1 overflow-y-auto mb-4 p-4 space-y-4" id="messages-container">
+        {% if messages %}
+            {% for message in messages %}
+            <div class="message-bubble message-{{ 'user' if message.sender == 'user' else 'ai' }} {% if message.sender == 'user' %}ml-auto{% endif %}">
+                <div class="flex items-center mb-1">
+                    <i class="fas fa-{{ 'user' if message.sender == 'user' else 'robot' }} mr-2 text-{{ 'blue' if message.sender == 'user' else 'green' }}-400"></i>
+                    <span class="text-xs text-gray-300">{{ format_time(message.created_at) }}</span>
+                </div>
+                <div class="whitespace-pre-wrap">{{ message.content }}</div>
+            </div>
+            {% endfor %}
+        {% else %}
+        <div class="text-center text-gray-400 mt-10">
+            <i class="fas fa-comments text-6xl mb-4 opacity-50"></i>
+            <p>开始你的对话吧</p>
+        </div>
+        {% endif %}
+        
+        <!-- 打字指示器 -->
+        <div id="typing-indicator" class="typing-indicator">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+        </div>
+    </div>
+    
+    <!-- 输入区域 -->
+    <div class="input-container">
+        <div class="flex items-end space-x-4">
+            <div class="flex-1">
+                <textarea 
+                    id="message-input" 
+                    class="w-full bg-gray-800 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    placeholder="输入你的消息..." 
+                    rows="2"></textarea>
+            </div>
+            <button id="send-button" class="btn-primary h-10 flex items-center justify-center">
+                <i class="fas fa-paper-plane mr-2"></i>发送
+            </button>
+        </div>
+        <div class="text-xs text-gray-400 mt-2">
+            按 Enter 发送，Shift+Enter 换行
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+
+    const conversationId = "{{ conversation_id }}";
+    let websocket = null;
+    function initWebSocket() {
+        const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/${conversationId}`;
+        websocket = new WebSocket(wsUrl);
+        
+        websocket.onopen = function(event) {
+            console.log('WebSocket连接已建立');
+        };
+        
+        websocket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            handleMessage(data);
+        };
+        
+        websocket.onclose = function(event) {
+            console.log('WebSocket连接已关闭');
+            // 5秒后尝试重新连接
+            setTimeout(initWebSocket, 5000);
+        };
+        
+        websocket.onerror = function(error) {
+            console.error('WebSocket错误:', error);
+        };
+    }
+    
+    // 处理接收到的消息
+    function handleMessage(data) {
+        if (data.type === 'stream') {
+            // 流式响应
+            updateTypingIndicator(true);
+            addStreamMessage(data.content);
+        } else if (data.type === 'message') {
+            // 完整消息
+            updateTypingIndicator(false);
+            if (data.sender === 'ai') {
+                // 如果有流式消息，先清除
+                const streamMessage = document.querySelector('.message-stream');
+                if (streamMessage) {
+                    streamMessage.remove();
+                }
+                addMessage(data.sender, data.content);
+            } else {
+                addMessage(data.sender, data.content);
+            }
+        } else if (data.type === 'error') {
+            updateTypingIndicator(false);
+            showNotification(data.message, 'error');
+        }
+    }
+    
+    // 添加消息到聊天区域
+    function addMessage(sender, content) {
+        const messagesContainer = document.getElementById('messages-container');
+        const messageElement = document.createElement('div');
+        
+        messageElement.className = `message-bubble message-${sender} ${sender === 'user' ? 'ml-auto' : ''}`;
+        
+        const timestamp = new Date().toISOString();
+        
+        messageElement.innerHTML = `
+            <div class="flex items-center mb-1">
+                <i class="fas fa-${sender === 'user' ? 'user' : 'robot'} mr-2 text-${sender === 'user' ? 'blue' : 'green'}-400"></i>
+                <span class="text-xs text-gray-300">${formatTime(timestamp)}</span>
+            </div>
+            <div class="whitespace-pre-wrap">${escapeHtml(content)}</div>
+        `;
+        
+        messagesContainer.appendChild(messageElement);
+        scrollToBottom();
+    }
+    
+    // 添加流式消息
+    function addStreamMessage(content) {
+        const messagesContainer = document.getElementById('messages-container');
+        let streamMessage = document.querySelector('.message-stream');
+        
+        if (!streamMessage) {
+            streamMessage = document.createElement('div');
+            streamMessage.className = 'message-bubble message-ai message-stream';
+            
+            streamMessage.innerHTML = `
+                <div class="flex items-center mb-1">
+                    <i class="fas fa-robot mr-2 text-green-400"></i>
+                    <span class="text-xs text-gray-300">现在</span>
+                </div>
+                <div class="whitespace-pre-wrap"></div>
+            `;
+            
+            messagesContainer.appendChild(streamMessage);
+        }
+        
+        const contentElement = streamMessage.querySelector('.whitespace-pre-wrap');
+        contentElement.textContent += content;
+        scrollToBottom();
+    }
+    
+    // 更新打字指示器
+    function updateTypingIndicator(show) {
+        const indicator = document.getElementById('typing-indicator');
+        if (show) {
+            indicator.classList.add('show');
+        } else {
+            indicator.classList.remove('show');
+        }
+    }
+    
+    // 发送消息
+    function sendMessage() {
+        const messageInput = document.getElementById('message-input');
+        const message = messageInput.value.trim();
+        
+        if (!message) {
+            return;
+        }
+        
+        // 清空输入框
+        messageInput.value = '';
+        messageInput.style.height = 'auto';
+        
+        // 如果WebSocket连接未就绪，使用HTTP API
+        if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+            sendViaAPI(message);
+            return;
+        }
+        
+        // 通过WebSocket发送消息
+        websocket.send(JSON.stringify({
+            message: message,
+            preset_id: document.getElementById('preset-selector').value
+        }));
+        
+        // 显示用户消息（通过WebSocket会收到自己的消息，但为了更快的反馈，直接显示）
+        addMessage('user', message);
+    }
+    
+    // 通过HTTP API发送消息
+    async function sendViaAPI(message) {
+        try {
+            const presetId = document.getElementById('preset-selector').value;
+            const response = await apiRequest('/chat', {
+                method: 'POST',
+                body: JSON.stringify({
+                    message: message,
+                    conversation_id: conversationId,
+                    preset_id: presetId ? parseInt(presetId) : null
+                })
+            });
+            
+            addMessage('ai', response.response);
+        } catch (error) {
+            console.error('发送消息失败:', error);
+            showNotification('发送消息失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 滚动到底部
+    function scrollToBottom() {
+        const messagesContainer = document.getElementById('messages-container');
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    // HTML转义
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // 更新预设
+    async function updatePreset(presetId) {
+        try {
+            await apiRequest(`/conversations/${conversationId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    title: "{{ conversation_title }}",
+                    preset_id: presetId ? parseInt(presetId) : null
+                })
+            });
+            
+            showNotification('预设已更新', 'success');
+        } catch (error) {
+            console.error('更新预设失败:', error);
+            showNotification('更新预设失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 重命名对话
+    function renameConversation() {
+        const newTitle = prompt('请输入新的对话标题:', "{{ conversation_title }}");
+        if (newTitle && newTitle !== "{{ conversation_title }}") {
+            apiRequest(`/conversations/${conversationId}`, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    title: newTitle
+                })
+            })
+            .then(() => {
+                document.querySelector('h1').textContent = newTitle;
+                showNotification('对话标题已更新', 'success');
+            })
+            .catch(error => {
+                console.error('重命名对话失败:', error);
+                showNotification('重命名失败: ' + error.message, 'error');
+            });
+        }
+    }
+    
+    // 导出对话
+    function exportConversation() {
+        window.open(`/api/conversations/${conversationId}/export`, '_blank');
+    }
+    
+    // 删除对话
+    function deleteConversation() {
+        if (confirm('确定要删除这个对话吗？此操作不可恢复。')) {
+            apiRequest(`/conversations/${conversationId}`, {
+                method: 'DELETE'
+            })
+            .then(() => {
+                showNotification('对话已删除', 'success');
+                window.location.href = '/';
+            })
+            .catch(error => {
+                console.error('删除对话失败:', error);
+                showNotification('删除失败: ' + error.message, 'error');
+            });
+        }
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        // 初始化
+        initWebSocket();
+        document.getElementById('send-button').addEventListener('click', sendMessage);
+        
+        const messageInput = document.getElementById('message-input');
+        
+        // 自动调整
+        messageInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+        
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        document.getElementById('preset-selector').addEventListener('change', function() {
+            updatePreset(this.value);
+        });
+        
+        // 重命名
+        document.getElementById('rename-conversation').addEventListener('click', renameConversation);
+        
+        // 导出
+        document.getElementById('export-conversation').addEventListener('click', exportConversation);
+        
+        // 删除
+        document.getElementById('delete-conversation').addEventListener('click', deleteConversation);
+        
+        scrollToBottom();
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}新建对话 - AI对话系统{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="glass-card p-6 mb-6">
+        <h1 class="text-2xl font-bold text-white mb-6">创建新对话</h1>
+        
+        <div class="mb-6">
+            <label for="conversation-title" class="block text-white mb-2">对话标题</label>
+            <input 
+                type="text" 
+                id="conversation-title" 
+                class="w-full bg-gray-800 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="输入对话标题..." 
+                value="新建对话">
+        </div>
+        
+        <div class="mb-6">
+            <label class="block text-white mb-2">选择AI预设</label>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="preset-card bg-gray-800 bg-opacity-50 p-4 rounded-lg cursor-pointer hover:bg-opacity-70 border-2 border-transparent" 
+                     onclick="selectPreset(null, this)">
+                    <div class="flex items-center mb-2">
+                        <i class="fas fa-robot text-blue-400 mr-3"></i>
+                        <h3 class="text-white font-medium">无预设</h3>
+                    </div>
+                    <p class="text-gray-400 text-sm">使用默认的AI助手设置</p>
+                </div>
+                
+                {% for preset in presets %}
+                <div class="preset-card bg-gray-800 bg-opacity-50 p-4 rounded-lg cursor-pointer hover:bg-opacity-70 border-2 border-transparent" 
+                     onclick="selectPreset({{ preset.id }}, this)"
+                     data-preset-id="{{ preset.id }}">
+                    <div class="flex items-center mb-2">
+                        <i class="fas fa-robot text-purple-400 mr-3"></i>
+                        <h3 class="text-white font-medium">{{ preset.name }}</h3>
+                    </div>
+                    <p class="text-gray-400 text-sm">{{ preset.description or "无描述" }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            
+            {% if not presets %}
+            <div class="text-center py-8">
+                <i class="fas fa-robot text-6xl text-gray-600 mb-4"></i>
+                <p class="text-gray-400">暂无可用预设，请先创建预设</p>
+                <a href="/presets" class="btn-primary inline-block mt-4">
+                    <i class="fas fa-plus mr-2"></i>创建预设
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="flex justify-end space-x-4">
+            <button onclick="window.location.href='/'" class="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600">
+                取消
+            </button>
+            <button id="create-conversation-btn" class="btn-primary px-6 py-2">
+                <i class="fas fa-plus mr-2"></i>创建对话
+            </button>
+        </div>
+    </div>
+    
+    <!-- 最近对话 -->
+    <div class="glass-card p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">继续之前的对话</h2>
+        
+        <div id="recent-conversations">
+            <div class="text-center py-4">
+                <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                <p class="text-gray-400 mt-2">加载中...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    let selectedPresetId = null;
+    
+    function selectPreset(presetId, element) {
+        document.querySelectorAll('.preset-card').forEach(card => {
+            card.classList.remove('border-blue-500');
+            card.classList.add('border-transparent');
+        });
+        element.classList.remove('border-transparent');
+        element.classList.add('border-blue-500');
+        
+        selectedPresetId = presetId;
+    }
+    
+    async function createConversation() {
+        const title = document.getElementById('conversation-title').value.trim() || '新建对话';
+        
+        try {
+            const response = await apiRequest('/conversations', {
+                method: 'POST',
+                body: JSON.stringify({
+                    title: title,
+                    preset_id: selectedPresetId
+                })
+            });
+            
+            if (response.id) {
+                showNotification('对话创建成功', 'success');
+                window.location.href = `/chat/${response.id}`;
+            } else {
+                showNotification('创建对话失败', 'error');
+            }
+        } catch (error) {
+            console.error('创建对话失败:', error);
+            showNotification('创建对话失败: ' + error.message, 'error');
+        }
+    }
+    
+
+
+
+    async function loadRecentConversations() {
+        try {
+            const response = await apiRequest('/conversations?limit=5');
+            
+            const container = document.getElementById('recent-conversations');
+            
+            if (response.conversations && response.conversations.length > 0) {
+                container.innerHTML = `
+                    <div class="space-y-3">
+                        ${response.conversations.map(conv => `
+                            <div class="p-4 bg-gray-800 bg-opacity-50 rounded-lg cursor-pointer hover:bg-opacity-70 transition-all conversation-item"
+                                 onclick="window.location.href='/chat/${conv.id}'">
+                                <h3 class="text-white font-medium truncate">${conv.title}</h3>
+                                <p class="text-gray-400 text-sm mt-1">${formatTime(conv.updated_at)}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="mt-4">
+                        <a href="/conversations" class="text-blue-400 hover:text-blue-300 text-sm">
+                            <i class="fas fa-history mr-1"></i>查看所有对话
+                        </a>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="fas fa-comments text-4xl text-gray-600 mb-3"></i>
+                        <p class="text-gray-400">暂无对话记录</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('加载最近对话失败:', error);
+            document.getElementById('recent-conversations').innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-exclamation-circle text-4xl text-red-500 mb-3"></i>
+                    <p class="text-gray-400">加载对话记录失败</p>
+                </div>
+            `;
+        }
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        selectPreset(null, document.querySelector('.preset-card'));
+        
+        document.getElementById('create-conversation-btn').addEventListener('click', createConversation);
+        
+        document.getElementById('conversation-title').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                createConversation();
+            }
+        });
+
+        loadRecentConversations();
+    });
+</script>
+{% endblock %}

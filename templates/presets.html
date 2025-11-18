@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block title %}预设管理 - AI对话系统{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="glass-card p-6 mb-6">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-2xl font-bold text-white">预设管理</h1>
+            <button id="add-preset-btn" class="btn-primary">
+                <i class="fas fa-plus mr-2"></i>新建预设
+            </button>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="presets-grid">
+            {% if presets %}
+                {% for preset in presets %}
+                <div class="preset-card glass-card p-6" data-preset-id="{{ preset.id }}">
+                    <div class="flex justify-between items-start mb-4">
+                        <h3 class="text-xl font-semibold text-white">{{ preset.name }}</h3>
+                        <span class="px-2 py-1 text-xs rounded-full {% if preset.is_active %}bg-green-900 text-green-300{% else %}bg-gray-700 text-gray-400{% endif %}">
+                            {{ '启用' if preset.is_active else '禁用' }}
+                        </span>
+                    </div>
+                    
+                    <p class="text-gray-300 mb-4 text-sm">{{ preset.description or '无描述' }}</p>
+                    
+                    <div class="mb-4">
+                        <div class="text-xs text-gray-400 mb-1">系统提示:</div>
+                        <div class="text-gray-300 text-sm max-h-20 overflow-y-auto">
+                            {{ preset.system_prompt[:100] + ('...' if preset.system_prompt|length > 100 else '') }}
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-between items-center text-xs text-gray-500 mb-4">
+                        <div>创建: {{ format_time(preset.created_at) }}</div>
+                        <div>更新: {{ format_time(preset.updated_at) }}</div>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-2">
+                        <button class="text-blue-400 hover:text-blue-300 edit-preset" data-preset-id="{{ preset.id }}">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="text-red-400 hover:text-red-300 delete-preset" data-preset-id="{{ preset.id }}">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="col-span-full text-center py-12">
+                <i class="fas fa-cog text-6xl text-gray-600 mb-4"></i>
+                <h3 class="text-xl font-medium text-white mb-2">暂无预设</h3>
+                <p class="text-gray-400 mb-6">创建你的第一个AI助手预设</p>
+                <button class="btn-primary" onclick="document.getElementById('add-preset-btn').click()">
+                    <i class="fas fa-plus mr-2"></i>创建预设
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="glass-card p-6">
+        <h2 class="text-xl font-semibold text-white mb-4">预设使用统计</h2>
+        <div id="preset-stats">
+            <div class="text-center py-4">
+                <i class="fas fa-spinner fa-spin text-2xl text-blue-400"></i>
+                <p class="text-gray-400 mt-2">加载中...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="preset-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="glass-card p-6 w-full max-w-2xl max-h-screen overflow-y-auto">
+        <div class="flex justify-between items-center mb-4">
+            <h2 id="modal-title" class="text-xl font-semibold text-white">新建预设</h2>
+            <button id="close-modal-btn" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <form id="preset-form">
+            <input type="hidden" id="preset-id" value="">
+            
+            <div class="mb-4">
+                <label for="preset-name" class="block text-white mb-2">名称 <span class="text-red-500">*</span></label>
+                <input 
+                    type="text" 
+                    id="preset-name" 
+                    class="w-full bg-gray-800 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required>
+            </div>
+            
+            <div class="mb-4">
+                <label for="preset-description" class="block text-white mb-2">描述</label>
+                <textarea 
+                    id="preset-description" 
+                    class="w-full bg-gray-800 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    rows="3"></textarea>
+            </div>
+            
+            <div class="mb-4">
+                <label for="preset-system-prompt" class="block text-white mb-2">系统提示 <span class="text-red-500">*</span></label>
+                <textarea 
+                    id="preset-system-prompt" 
+                    class="w-full bg-gray-800 text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    rows="8"
+                    required></textarea>
+                <div class="text-xs text-gray-400 mt-1">
+                    这是AI助手的系统提示，定义了AI的行为和角色
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <label class="flex items-center text-white">
+                    <input type="checkbox" id="preset-is-active" class="mr-2" checked>
+                    <span>启用此预设</span>
+                </label>
+            </div>
+            
+            <div class="flex justify-end space-x-4">
+                <button type="button" id="cancel-btn" class="px-6 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600">
+                    取消
+                </button>
+                <button type="submit" class="btn-primary px-6 py-2">
+                    <i class="fas fa-save mr-2"></i>保存
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function showModal(title = '新建预设', presetId = null) {
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('preset-id').value = presetId || '';
+        
+        if (presetId) {
+            loadPresetForEdit(presetId);
+        } else {
+            document.getElementById('preset-form').reset();
+        }
+        
+        document.getElementById('preset-modal').classList.remove('hidden');
+    }
+    
+    function hideModal() {
+        document.getElementById('preset-modal').classList.add('hidden');
+    }
+    
+    // 加载数据到表单
+    async function loadPresetForEdit(presetId) {
+        try {
+            const preset = await apiRequest(`/presets/${presetId}`);
+            
+            document.getElementById('preset-name').value = preset.name;
+            document.getElementById('preset-description').value = preset.description || '';
+            document.getElementById('preset-system-prompt').value = preset.system_prompt;
+            document.getElementById('preset-is-active').checked = preset.is_active;
+        } catch (error) {
+            console.error('加载预设数据失败:', error);
+            showNotification('加载预设数据失败: ' + error.message, 'error');
+            hideModal();
+        }
+    }
+    
+    // 保存预设
+    async function savePreset() {
+        const presetId = document.getElementById('preset-id').value;
+        const name = document.getElementById('preset-name').value.trim();
+        const description = document.getElementById('preset-description').value.trim();
+        const systemPrompt = document.getElementById('preset-system-prompt').value.trim();
+        const isActive = document.getElementById('preset-is-active').checked;
+        
+        if (!name || !systemPrompt) {
+            showNotification('请填写必填项', 'error');
+            return;
+        }
+        
+        const presetData = {
+            name: name,
+            description: description,
+            system_prompt: systemPrompt,
+            is_active: isActive
+        };
+        
+        try {
+            if (presetId) {
+                await apiRequest(`/presets/${presetId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(presetData)
+                });
+                showNotification('预设更新成功', 'success');
+            } else {
+                await apiRequest('/presets/', {
+                    method: 'POST',
+                    body: JSON.stringify(presetData)
+                });
+                showNotification('预设创建成功', 'success');
+            }
+            
+            hideModal();
+            location.reload(); // 刷新页面以显示更新后的预设列表
+        } catch (error) {
+            console.error('保存预设失败:', error);
+            showNotification('保存预设失败: ' + error.message, 'error');
+        }
+    }
+    
+    // 删除预设
+    async function deletePreset(presetId) {
+        if (!confirm('确定要删除这个预设吗？此操作不可恢复。')) {
+            return;
+        }
+        
+        try {
+            await apiRequest(`/presets/${presetId}`, {
+                method: 'DELETE'
+            });
+            showNotification('预设删除成功', 'success');
+            
+            // 移除卡片
+            const presetCard = document.querySelector(`[data-preset-id="${presetId}"]`);
+            if (presetCard) {
+                presetCard.remove();
+            }
+
+            const remainingCards = document.querySelectorAll('.preset-card');
+            if (remainingCards.length === 0) {
+                location.reload(); // 刷新页面显示空状态
+            }
+        } catch (error) {
+            console.error('删除预设失败:', error);
+            showNotification('删除预设失败: ' + error.message, 'error');
+        }
+    }
+    async function loadPresetStats() {
+        try {
+            const promises = [];
+            const presetCards = document.querySelectorAll('.preset-card');
+            
+            presetCards.forEach(card => {
+                const presetId = card.getAttribute('data-preset-id');
+                if (presetId) {
+                    promises.push(apiRequest(`/presets/${presetId}/usage`));
+                }
+            });
+            
+            const stats = await Promise.all(promises);
+            
+            const statsContainer = document.getElementById('preset-stats');
+            
+            if (stats.length > 0) {
+                statsContainer.innerHTML = `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${stats.map(stat => `
+                            <div class="bg-gray-800 bg-opacity-50 p-4 rounded-lg">
+                                <h4 class="text-white font-medium">${stat.preset_name}</h4>
+                                <div class="mt-2 text-sm">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">对话数:</span>
+                                        <span class="text-white">${stat.conversation_count}</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">状态:</span>
+                                        <span class="${stat.is_active ? 'text-green-400' : 'text-gray-500'}">
+                                            ${stat.is_active ? '启用' : '禁用'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } else {
+                statsContainer.innerHTML = `
+                    <div class="text-center py-4">
+                        <i class="fas fa-chart-bar text-4xl text-gray-600 mb-3"></i>
+                        <p class="text-gray-400">暂无预设统计数据</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('加载预设统计失败:', error);
+            document.getElementById('preset-stats').innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-exclamation-circle text-4xl text-red-500 mb-3"></i>
+                    <p class="text-gray-400">加载统计信息失败</p>
+                </div>
+            `;
+        }
+    }
+    
+    // 事件监听器
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('add-preset-btn').addEventListener('click', () => showModal('新建预设'));
+        
+        document.getElementById('close-modal-btn').addEventListener('click', hideModal);
+        document.getElementById('cancel-btn').addEventListener('click', hideModal);
+        
+        document.getElementById('preset-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            savePreset();
+        });
+        
+        document.getElementById('presets-grid').addEventListener('click', (e) => {
+            const editBtn = e.target.closest('.edit-preset');
+            if (editBtn) {
+                const presetId = editBtn.getAttribute('data-preset-id');
+                showModal('编辑预设', presetId);
+            }
+            
+            const deleteBtn = e.target.closest('.delete-preset');
+            if (deleteBtn) {
+                const presetId = deleteBtn.getAttribute('data-preset-id');
+                deletePreset(presetId);
+            }
+        });
+        
+        document.getElementById('preset-modal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                hideModal();
+            }
+        });
+        
+        loadPresetStats();
+    });
+</script>
+{% endblock %}

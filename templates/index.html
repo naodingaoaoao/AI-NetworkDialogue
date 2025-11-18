@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}AI对话系统 - 首页{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="text-center mb-10">
+        <h1 class="text-4xl font-bold text-white mb-4 gradient-text">AI对话系统</h1>
+        <p class="text-gray-300 text-lg">基于LM Studio的智能对话平台</p>
+    </div>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+        <div class="glass-card p-6 text-white">
+            <div class="flex items-center mb-4">
+                <i class="fas fa-comments text-3xl text-blue-400 mr-4"></i>
+                <h2 class="text-xl font-semibold">开始对话</h2>
+            </div>
+            <p class="mb-4 text-gray-300">与AI助手进行实时对话，获取智能回复和建议。</p>
+            <button onclick="window.location.href='/new-chat'" class="btn-primary w-full">新建对话</button>
+        </div>
+        
+        <div class="glass-card p-6 text-white">
+            <div class="flex items-center mb-4">
+                <i class="fas fa-cog text-3xl text-purple-400 mr-4"></i>
+                <h2 class="text-xl font-semibold">预设管理</h2>
+            </div>
+            <p class="mb-4 text-gray-300">创建和编辑AI助手预设，定制不同的对话风格。</p>
+            <button onclick="window.location.href='/presets'" class="btn-primary w-full">管理预设</button>
+        </div>
+        
+        <div class="glass-card p-6 text-white">
+            <div class="flex items-center mb-4">
+                <i class="fas fa-code text-3xl text-green-400 mr-4"></i>
+                <h2 class="text-xl font-semibold">API接口</h2>
+            </div>
+            <p class="mb-4 text-gray-300">查看API文档，了解如何将AI对话功能集成到您的应用中。</p>
+            <button onclick="window.location.href='/api-docs'" class="btn-primary w-full">查看文档</button>
+        </div>
+    </div>
+    
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="glass-card p-6">
+            <h2 class="text-xl font-semibold text-white mb-4">可用预设</h2>
+            {% if presets %}
+                <div class="space-y-3">
+                    {% for preset in presets %}
+                    <div class="p-4 bg-gray-800 bg-opacity-50 rounded-lg cursor-pointer hover:bg-opacity-70 transition-all"
+                         onclick="startChatWithPreset({{ preset.id }})">
+                        <h3 class="text-white font-medium">{{ preset.name }}</h3>
+                        <p class="text-gray-400 text-sm mt-1">{{ preset.description or "无描述" }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-gray-400">暂无可用预设，请先添加预设。</p>
+            {% endif %}
+            <div class="mt-4">
+                <a href="/presets" class="text-blue-400 hover:text-blue-300 text-sm">
+                    <i class="fas fa-plus mr-1"></i>创建新预设
+                </a>
+            </div>
+        </div>
+        
+        <div class="glass-card p-6">
+            <h2 class="text-xl font-semibold text-white mb-4">最近对话</h2>
+            {% if recent_conversations %}
+                <div class="space-y-3">
+                    {% for conv in recent_conversations %}
+                    <div class="p-4 bg-gray-800 bg-opacity-50 rounded-lg cursor-pointer hover:bg-opacity-70 transition-all conversation-item"
+                         onclick="window.location.href='/chat/{{ conv.id }}'">
+                        <h3 class="text-white font-medium truncate">{{ conv.title }}</h3>
+                        <p class="text-gray-400 text-sm mt-1">{{ format_time(conv.updated_at) }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-gray-400">暂无对话记录，开始你的第一次对话吧。</p>
+            {% endif %}
+            <div class="mt-4">
+                <a href="/conversations" class="text-blue-400 hover:text-blue-300 text-sm">
+                    <i class="fas fa-history mr-1"></i>查看所有对话
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function startChatWithPreset(presetId) {
+        fetch('/api/conversations', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: '新建对话',
+                preset_id: presetId
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) {
+                window.location.href = `/chat/${data.id}`;
+            } else {
+                showNotification('创建对话失败', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('创建对话失败:', error);
+            showNotification('创建对话失败', 'error');
+        });
+    }
+    
+    // 格式化时间
+    document.addEventListener('DOMContentLoaded', function() {
+        const timeElements = document.querySelectorAll('[data-time]');
+        timeElements.forEach(element => {
+            const timeString = element.getAttribute('data-time');
+            if (timeString) {
+                element.textContent = formatTime(timeString);
+            }
+        });
+    });
+</script>
+{% endblock %}
